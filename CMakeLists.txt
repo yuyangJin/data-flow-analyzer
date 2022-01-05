@@ -11,24 +11,16 @@ target_compile_options(igraph PRIVATE -fPIC)
 
 #option(ENABLE_EXAMPLE "Enable example" ON)
 
+find_package(LLVM REQUIRED CONFIG)
+add_definitions(${LLVM_DEFINITIONS})
+list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+include(AddLLVM)
+include_directories(${LLVM_INCLUDE_DIRS})
+include_directories(${PROJECT_SOURCE_DIR}/src)
+include_directories(${PROJECT_SOURCE_DIR}/third_party/dbg)
+include_directories(igraph)
 
-# explicitly list all source file
-add_library(
-  depdetector
-  SHARED
-  
-  src/utils.h
-  src/graph.cpp
-)
-
-
-target_include_directories(depdetector PUBLIC ${PROJECT_SOURCE_DIR}/include)
-target_include_directories(depdetector PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_include_directories(depdetector PUBLIC ${PROJECT_SOURCE_DIR}/third_party/dbg)
-target_include_directories(depdetector PRIVATE igraph)
-
-target_link_libraries(depdetector PRIVATE igraph)
-
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/third_party/dbg/ DESTINATION  ${CMAKE_INSTALL_PREFIX}/include)
+link_libraries(igraph)
+link_directories(${LLVM_LIBRARY_DIRS})
 
 add_subdirectory(src)
