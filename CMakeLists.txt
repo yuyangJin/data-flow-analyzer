@@ -5,6 +5,8 @@ endif()
 
 project(depdetector CXX C)
 
+set(CMAKE_CXX_FLAGS "-fpermissive -g")
+
 #set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}")
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/igraph)
 target_compile_options(igraph PRIVATE -fPIC)

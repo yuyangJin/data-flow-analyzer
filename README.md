@@ -3,7 +3,7 @@ Analyze data flow graph for C/C++/Fortran (maybe) programs.
 
 # Build
 ```
-LLVM_DIR=path/to/llvm/lib/cmake/llvm cmake .
+LLVM_DIR=path/to/llvm/lib/cmake/llvm cmake ..
 ```
 
 
