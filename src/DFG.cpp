@@ -25,6 +25,7 @@
 #include <llvm/Support/raw_ostream.h>
 //#include <llvm/DebugInfo.h>
 
+#include "pattern.h"
 #include <list>
 #include <map>
 #include <sstream>
@@ -48,7 +49,6 @@ public:
   edge_list inst_edges; // control flow
   edge_list edges;      // data flow
   node_list nodes;      // instruction
-
 
   int num;
   int func_id = 0;
@@ -181,61 +181,83 @@ public:
     return str.compare(0, head.size(), head) == 0;
   }
 
-  static std::string getGEPPattern(GetElementPtrInst *curII, DataLayout *DL) {
-    // vector<std::string> op_pattern;
-    auto usr = dyn_cast<User>(curII);
-    std::ostringstream oss;
-    uint64_t offset = 0;
-    unsigned num_op = 0;
-    Type *elemTy = usr->getOperand(0)->getType();
-    auto GTI = gep_type_begin(usr);
-    auto GTE = gep_type_end(usr);
-    // gep_type start from Operand(1). Operand(0) is considered as a base
-    // address. The rest is used for compute the offset.
-    for (auto i = 1; GTI != GTE; ++GTI, ++i) {
-      Value *idx = GTI.getOperand();
-      // std::string &pat = op_pattern[i];
-      if (StructType *sTy = GTI.getStructTypeOrNull()) {
-        if (!idx->getType()->isIntegerTy(32)) {
-          oss << "u";
-          // myassert("Type error!");
-          break;
-        }
-        unsigned fieldNo = cast<ConstantInt>(idx)->getZExtValue();
-        const StructLayout *SL = DL->getStructLayout(sTy);
-        offset += SL->getElementOffset(fieldNo);
-      } else {
-        if (ConstantInt *csti = dyn_cast<ConstantInt>(idx)) {
-          uint64_t arrayIdx = csti->getSExtValue();
-          offset += arrayIdx * DL->getTypeAllocSize(GTI.getIndexedType());
-        } else {
-          if (offset != 0) {
-            oss << "c" << offset;
-            offset = 0;
-            ++num_op;
-          }
-          oss << "*2c" << DL->getTypeAllocSize(GTI.getIndexedType()); // << pat;
-          ++num_op;
-        }
-      }
-    }
+  // static std::string getGEPPattern(GetElementPtrInst *curII, DataLayout *DL)
+  // {
+  //   // vector<std::string> op_pattern;
+  //   auto usr = dyn_cast<User>(curII);
+  //   std::ostringstream oss;
+  //   uint64_t offset = 0;
+  //   unsigned num_op = 0;
+  //   Type *elemTy = usr->getOperand(0)->getType();
+  //   auto GTI = gep_type_begin(usr);
+  //   auto GTE = gep_type_end(usr);
+  //   // gep_type start from Operand(1). Operand(0) is considered as a base
+  //   // address. The rest is used for compute the offset.
+  //   for (auto i = 1; GTI != GTE; ++GTI, ++i) {
+  //     Value *idx = GTI.getOperand();
+  //     // std::string &pat = op_pattern[i];
+  //     if (StructType *sTy = GTI.getStructTypeOrNull()) {
+  //       if (!idx->getType()->isIntegerTy(32)) {
+  //         oss << "u";
+  //         // myassert("Type error!");
+  //         break;
+  //       }
+  //       unsigned fieldNo = cast<ConstantInt>(idx)->getZExtValue();
+  //       const StructLayout *SL = DL->getStructLayout(sTy);
+  //       offset += SL->getElementOffset(fieldNo);
+  //     } else {
+  //       if (ConstantInt *csti = dyn_cast<ConstantInt>(idx)) {
+  //         uint64_t arrayIdx = csti->getSExtValue();
+  //         offset += arrayIdx * DL->getTypeAllocSize(GTI.getIndexedType());
+  //       } else {
+  //         if (offset != 0) {
+  //           oss << "c" << offset;
+  //           offset = 0;
+  //           ++num_op;
+  //         }
+  //         oss << "*2c" << DL->getTypeAllocSize(GTI.getIndexedType()); // <<
+  //         pat;
+  //         ++num_op;
+  //       }
+  //     }
+  //   }
 
-    if (offset != 0) {
-      oss << "c" << offset;
-      offset = 0;
-      ++num_op;
-    }
+  //   if (offset != 0) {
+  //     oss << "c" << offset;
+  //     offset = 0;
+  //     ++num_op;
+  //   }
 
-    auto vs = oss.str();
-    oss.str("");
-    oss.clear();
-    if (num_op) {
-      oss << "+" << (num_op + 1) << vs;
-    } else {
-      // oss << ;
-    }
+  //   auto vs = oss.str();
+  //   oss.str("");
+  //   oss.clear();
+  //   if (num_op) {
+  //     oss << "+" << (num_op + 1) << vs;
+  //   } else {
+  //     // oss << ;
+  //   }
 
-    return oss.str();
+  //   return oss.str();
+  // }
+
+  PatNode *getGEPPattern(GetElementPtrInst *gep_inst, DataLayout *DL, Loop *L) {
+    GEPOperator *gep_op = dyn_cast<GEPOperator>(gep_inst);
+    Value *obj = gep_op->getPointerOperand();
+    errs() << getValueName(obj) << '\n';
+
+    PatNode *gep_node = new PatNode(gep_inst, GEP_INST, getValueName(obj));
+
+    int num_operand = gep_inst->getNumOperands();
+    for (int i = 2; i < num_operand; i++) {
+      Value *idx = gep_inst->getOperand(i);
+      errs() << getValueName(idx) << '\n';
+      errs() << *idx << '\n';
+      PatNode *op_node = getOpPattern(idx, L);
+      gep_node->addChild(op_node);
+    }
+    dumpPattern(gep_node, 0);
+
+    return gep_node;
   }
 
   bool runOnModule(Module &M) override {
@@ -276,7 +298,7 @@ public:
     return indvar;
   }
 
-  void getBinaryOpPattern(BinaryOperator *curII) {
+  PatNode *getBinaryOpPattern(BinaryOperator *curII, Loop *L) {
     auto opcode = curII->getOpcode();
     // errs() << opcode << '\n';
     std::ostringstream oss;
@@ -358,34 +380,97 @@ public:
       break;
     }
     errs() << oss.str() << '\n';
+
+    PatNode *bin_node = new PatNode(curII, BIN_OP, oss.str());
+    errs() << "Process binary op " << getValueName(curII)
+           << ": bin op is " << oss.str() << '\n';
+    // traverse operand
+    int num_operands = curII->getNumOperands();
+    for (int i = 0; i < num_operands; i++) {
+      auto operand = curII->getOperand(i);
+      errs() << "Process binary op operand " << getValueName(operand)
+           << ": " << getValueName(operand) << '\n';
+      if (!L->isLoopInvariant(operand) || isa<ConstantInt>(operand)) {
+        auto child = getOpPattern(operand, L);
+        errs() << "variant vars: " << getValueName(operand) << '\n';
+        bin_node->addChild(child);
+      }
+    }
+
+    return bin_node;
   }
 
   void getSExtPattern(SExtInst *sext_inst) { errs() << '=' << '\n'; }
-  void getSExtPattern(CastInst *sext_inst) { errs() << '=' << '\n'; }
+  PatNode *getCastPattern(CastInst *sext_inst, Loop *L) {
+    errs() << '=' << '\n';
+    PatNode *cast_node = new PatNode(sext_inst, CAST_INST,
+                                     getValueName(sext_inst->getOperand(0)));
+          errs() << "Process cast " << getValueName(sext_inst)
+            << '\n';
 
-  void getOpPattern(Instruction *curII, DataLayout *DL) {
-    if (isa<BinaryOperator>(curII)) {
-      auto *bin_op = dyn_cast<BinaryOperator>(curII);
-      getBinaryOpPattern(bin_op);
+    // traverse operand
+    auto operand = sext_inst->getOperand(0);
+    errs() << "  Process cast operand " << getValueName(operand)
+            << '\n';
+    if (!L->isLoopInvariant(operand)) {
+      errs() << "variant vars " << getValueName(operand) << '\n';
+      auto child = getOpPattern(operand, L);
+
+      cast_node->addChild(child);
+    }
+
+    return cast_node;
+  }
+
+  PatNode *getConstPattern(ConstantInt *const_v) {
+    errs() << "Process constant " << getValueName(const_v)
+           << ": value = " << const_v->getSExtValue() << '\n';
+    std::string temp_result = std::to_string(const_v->getSExtValue());
+    PatNode *const_node =
+        new PatNode(const_v, CONSTANT, (int)const_v->getSExtValue());
+  }
+
+  bool isLoopIndVar(Value* v) {
+    auto iter = variant_value.find(v);
+    if (iter != variant_value.end()) {
+      return true;
+    } 
+    return false;
+  }
+
+  PatNode *getOpPattern(Instruction *curII, Loop *L) {
+    if (isLoopIndVar(curII)) {
+      PatNode * indvar_node = new PatNode(curII, LOOP_IND_VAR, getValueName(curII));
+      return indvar_node;
+    } else if (isa<BinaryOperator>(curII)) {
+      auto bin_op = dyn_cast<BinaryOperator>(curII);
+      return getBinaryOpPattern(bin_op, L);
     }
     // else if (isa<SExtInst>(curII)) {
     else if (isa<CastInst>(curII)) {
-      auto *sext_inst = dyn_cast<CastInst>(curII);
-      getSExtPattern(sext_inst);
-    } else if (isa<GetElementPtrInst>(curII)) {
-      auto *gep_inst = dyn_cast<GetElementPtrInst>(curII);
-      getGEPPattern(gep_inst, DL);
+      auto sext_inst = dyn_cast<CastInst>(curII);
+      return getCastPattern(sext_inst, L);
+    } else if (isa<ConstantInt>(curII)) {
+      auto constant_v = dyn_cast<ConstantInt>(curII);
+      return getConstPattern(constant_v);
     }
+
+    return nullptr;
+    // } else if (isa<GetElementPtrInst>(curII)) {
+    //   auto *gep_inst = dyn_cast<GetElementPtrInst>(curII);
+    //   getGEPPattern(gep_inst, DL);
+    // }
   }
 
-  void handleLoop(Loop *L, LoopInfo &LI, DataLayout *DL, ScalarEvolution &SE, Function* F) {
-    
+  void handleLoop(Loop *L, LoopInfo &LI, DataLayout *DL, ScalarEvolution &SE,
+                  Function *F) {
+
     Value *indvar = getLoopIndvar(L, SE);
     // getValueName(indvar, F)
 
     variant_value.insert(make_pair(indvar, std::string("xx")));
 
-    errs() << "Loop index var:" << getValueName(indvar) << '\n';
+    errs() << "Loop index var:" << getValueName(indvar) << '\n\n';
     for (Loop::block_iterator BB = L->block_begin(), BEnd = L->block_end();
          BB != BEnd; ++BB) {
       BasicBlock *curBB = *BB;
@@ -425,10 +510,11 @@ public:
                 errs() << "invariant vars: " << getValueName(operand) << '\n';
               }
             }
-            variant_value.insert(std::make_pair(curII, std::string("xx")));
-            
+            errs() << '\n';
+            // variant_value.insert(std::make_pair(curII, std::string("xx")));
+
             // Analyze the pattern
-            getOpPattern(curII, DL);
+            // getOpPattern(curII);
           }
         }
 
@@ -440,10 +526,11 @@ public:
           errs() << *(curII) << "\n";
           GetElementPtrInst *gepinst = dyn_cast<GetElementPtrInst>(curII);
 
-          // auto user = dyn_cast<User>(curII);
-          auto pat = getGEPPattern(gepinst, DL);
+          // PatNode* pat_node = PatNode(curII, GEP_INST, getValueName(curII));
+          //  auto user = dyn_cast<User>(curII);
+          auto pat = getGEPPattern(gepinst, DL, L);
 
-          errs() << pat << "\n";
+          // errs() << pat << "\n";
 
           GEPOperator *gepop = dyn_cast<GEPOperator>(curII);
           Value *obj = gepop->getPointerOperand();
@@ -470,47 +557,48 @@ public:
           // errs() <<  "[" << getOriginalName(obj, F) << "]" << '\n';
         }
 
-        // errs() << getValueName(curII) << "\n";
-        switch (curII->getOpcode()) {
-        // Load and store instruction
-        case llvm::Instruction::Load: {
-          LoadInst *linst = dyn_cast<LoadInst>(curII);
-          Value *loadValPtr = linst->getPointerOperand();
-          edges.push_back(edge(node(loadValPtr, getValueName(loadValPtr)),
-                               node(curII, getValueName(curII))));
-          break;
-        }
-        case llvm::Instruction::Store: {
-          StoreInst *sinst = dyn_cast<StoreInst>(curII);
-          Value *storeValPtr = sinst->getPointerOperand();
-          Value *storeVal = sinst->getValueOperand();
-          edges.push_back(edge(node(storeVal, getValueName(storeVal)),
-                               node(curII, getValueName(curII))));
-          edges.push_back(edge(node(curII, getValueName(curII)),
-                               node(storeValPtr, getValueName(storeValPtr))));
-          break;
-        }
-        default: {
-          for (Instruction::op_iterator op = curII->op_begin(),
-                                        opEnd = curII->op_end();
-               op != opEnd; ++op) {
-            Instruction *tempIns;
-            if (dyn_cast<Instruction>(*op)) {
-              edges.push_back(edge(node(op->get(), getValueName(op->get())),
-                                   node(curII, getValueName(curII))));
-            }
-          }
-          break;
-        }
-        }
-        BasicBlock::iterator next = II;
-        // errs() << curII << "\n";
-        nodes.push_back(node(curII, getValueName(curII)));
-        ++next;
-        if (next != IEnd) {
-          inst_edges.push_back(edge(node(curII, getValueName(curII)),
-                                    node(&*next, getValueName(&*next))));
-        }
+        // // errs() << getValueName(curII) << "\n";
+        // switch (curII->getOpcode()) {
+        // // Load and store instruction
+        // case llvm::Instruction::Load: {
+        //   LoadInst *linst = dyn_cast<LoadInst>(curII);
+        //   Value *loadValPtr = linst->getPointerOperand();
+        //   edges.push_back(edge(node(loadValPtr, getValueName(loadValPtr)),
+        //                        node(curII, getValueName(curII))));
+        //   break;
+        // }
+        // case llvm::Instruction::Store: {
+        //   StoreInst *sinst = dyn_cast<StoreInst>(curII);
+        //   Value *storeValPtr = sinst->getPointerOperand();
+        //   Value *storeVal = sinst->getValueOperand();
+        //   edges.push_back(edge(node(storeVal, getValueName(storeVal)),
+        //                        node(curII, getValueName(curII))));
+        //   edges.push_back(edge(node(curII, getValueName(curII)),
+        //                        node(storeValPtr,
+        //                        getValueName(storeValPtr))));
+        //   break;
+        // }
+        // default: {
+        //   for (Instruction::op_iterator op = curII->op_begin(),
+        //                                 opEnd = curII->op_end();
+        //        op != opEnd; ++op) {
+        //     Instruction *tempIns;
+        //     if (dyn_cast<Instruction>(*op)) {
+        //       edges.push_back(edge(node(op->get(), getValueName(op->get())),
+        //                            node(curII, getValueName(curII))));
+        //     }
+        //   }
+        //   break;
+        // }
+        // }
+        // BasicBlock::iterator next = II;
+        // // errs() << curII << "\n";
+        // nodes.push_back(node(curII, getValueName(curII)));
+        // ++next;
+        // if (next != IEnd) {
+        //   inst_edges.push_back(edge(node(curII, getValueName(curII)),
+        //                             node(&*next, getValueName(&*next))));
+        // }
       }
 
       Instruction *terminator = curBB->getTerminator();
@@ -592,9 +680,8 @@ public:
 
     return;
   }
-
-}; 
-}// namespace
+};
+} // namespace
 
 char DFGPass::ID = 0;
 static RegisterPass<DFGPass> X("DFGPass", "DFG Pass Analyze", false, false);
