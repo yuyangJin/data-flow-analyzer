@@ -169,8 +169,9 @@ public:
     // auto phi = dyn_cast<PHINode>(L);
     PHINode *indvar_phinode = L->getInductionVariable(SE);
     // errs() << " phi: "<< indvar_phinode << '\n';
-    Value *indvar = dyn_cast<Value>(indvar_phinode);
-    return indvar;
+    // Value *indvar = dyn_cast<Value>(indvar_phinode);
+    // return indvar;
+    return indvar_phinode;
   }
 
   bool isLoopIndVar(Value *v) {
