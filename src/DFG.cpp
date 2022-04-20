@@ -31,6 +31,8 @@
 #include <sstream>
 #include <string>
 
+#define DEBUG
+
 using namespace llvm;
 namespace {
 
@@ -44,6 +46,7 @@ public:
   typedef std::list<edge> edge_list;
 
   std::map<Value *, std::string> variant_value;
+  std::vector<Loop *> loop_stack;
 
   // std::error_code error;
   edge_list inst_edges; // control flow
@@ -102,31 +105,11 @@ public:
       }
       // errs() << temp_result << "\n";
     } else {
-      // std::string str = std::string(v->getName().str());
-      // str.erase( std::remove( str.begin(),  str.end(),  '\"' ),  str.end() );
-      // temp_result = str;
       temp_result = v->getName().str();
       // errs() << temp_result << "\n";
     }
-    // StringRef result(temp_result);
-    // errs() << result;
-    // return result;
     return temp_result;
   }
-
-  // std::string getDbgName(Value* v){
-
-  // 	MDNode* N = cast<MDNode>(v);
-  // 	if (N) {
-  // 		MDString * mds = dyn_cast_or_null<MDString>(N->getOperand(2));
-  // 		errs() << mds->getString();
-
-  // 	 	// DIVariable *var(N);
-  // 		// errs() << var.getName() << '\n';
-
-  // 	}
-  // 	return "$$";
-  // }
 
   const MDNode *findVar(const Value *V, const Function *F) {
     for (const_inst_iterator Iter = inst_begin(F), End = inst_end(F);
@@ -149,7 +132,7 @@ public:
     return nullptr;
   }
 
-  std::string getOriginalName(const Value *V, Function *F) {
+  std::string getDbgName(const Value *V, Function *F) {
     // TODO handle globals as well
 
     // const Function* F = findEnclosingFunc(V);
@@ -168,7 +151,8 @@ public:
     // 	return "##";
     // }
 
-    DIVariable *var(Var);
+    auto var = dyn_cast<DIVariable>(Var);
+    // DIVariable *var(Var);
 
     return var->getName().str();
   }
@@ -181,115 +165,6 @@ public:
     return str.compare(0, head.size(), head) == 0;
   }
 
-  // static std::string getGEPPattern(GetElementPtrInst *curII, DataLayout *DL)
-  // {
-  //   // vector<std::string> op_pattern;
-  //   auto usr = dyn_cast<User>(curII);
-  //   std::ostringstream oss;
-  //   uint64_t offset = 0;
-  //   unsigned num_op = 0;
-  //   Type *elemTy = usr->getOperand(0)->getType();
-  //   auto GTI = gep_type_begin(usr);
-  //   auto GTE = gep_type_end(usr);
-  //   // gep_type start from Operand(1). Operand(0) is considered as a base
-  //   // address. The rest is used for compute the offset.
-  //   for (auto i = 1; GTI != GTE; ++GTI, ++i) {
-  //     Value *idx = GTI.getOperand();
-  //     // std::string &pat = op_pattern[i];
-  //     if (StructType *sTy = GTI.getStructTypeOrNull()) {
-  //       if (!idx->getType()->isIntegerTy(32)) {
-  //         oss << "u";
-  //         // myassert("Type error!");
-  //         break;
-  //       }
-  //       unsigned fieldNo = cast<ConstantInt>(idx)->getZExtValue();
-  //       const StructLayout *SL = DL->getStructLayout(sTy);
-  //       offset += SL->getElementOffset(fieldNo);
-  //     } else {
-  //       if (ConstantInt *csti = dyn_cast<ConstantInt>(idx)) {
-  //         uint64_t arrayIdx = csti->getSExtValue();
-  //         offset += arrayIdx * DL->getTypeAllocSize(GTI.getIndexedType());
-  //       } else {
-  //         if (offset != 0) {
-  //           oss << "c" << offset;
-  //           offset = 0;
-  //           ++num_op;
-  //         }
-  //         oss << "*2c" << DL->getTypeAllocSize(GTI.getIndexedType()); // <<
-  //         pat;
-  //         ++num_op;
-  //       }
-  //     }
-  //   }
-
-  //   if (offset != 0) {
-  //     oss << "c" << offset;
-  //     offset = 0;
-  //     ++num_op;
-  //   }
-
-  //   auto vs = oss.str();
-  //   oss.str("");
-  //   oss.clear();
-  //   if (num_op) {
-  //     oss << "+" << (num_op + 1) << vs;
-  //   } else {
-  //     // oss << ;
-  //   }
-
-  //   return oss.str();
-  // }
-
-  PatNode *getGEPPattern(GetElementPtrInst *gep_inst, DataLayout *DL, Loop *L) {
-    GEPOperator *gep_op = dyn_cast<GEPOperator>(gep_inst);
-    Value *obj = gep_op->getPointerOperand();
-    errs() << getValueName(obj) << '\n';
-
-    PatNode *gep_node = new PatNode(gep_inst, GEP_INST, getValueName(obj));
-
-    int num_operand = gep_inst->getNumOperands();
-    for (int i = 1; i < num_operand; i++) {
-      Value *idx = gep_inst->getOperand(i);
-      errs() << getValueName(idx) << '\n';
-      errs() << *idx << '\n';
-      PatNode *op_node = getOpPattern(idx, L);
-      gep_node->addChild(op_node);
-    }
-    dumpPattern(gep_node, 0);
-
-    return gep_node;
-  }
-
-  bool runOnModule(Module &M) override {
-    // Mark all recursive functions
-    // unordered_map<CallGraphNode *, Function *> callGraphNodeMap;
-    // auto &cg = getAnalysis<CallGraph>();
-    // for (auto &f: M) {
-    // 	auto cgn = cg[&f];
-    // 	callGraphNodeMap[cgn] = &f;
-    // }
-    // scc_iterator<CallGraph *> cgSccIter = scc_begin(&cg);
-    // while (!cgSccIter.isAtEnd()) {
-    // 	if (cgSccIter.hasLoop()) {
-    // 		const vector<CallGraphNode*>& nodeVec = *cgSccIter;
-    // 		for (auto cgn: nodeVec) {
-    // 			auto f = callGraphNodeMap[cgn];
-    // 			recSet.insert(f);
-    // 		}
-    // 	}
-    // 	++cgSccIter;
-    // }
-
-    // for(Module::iterator FI=M.begin(), E=M.end(); FI!=E; ++FI) {
-    for (auto &f : M) {
-      // Function *F = **FI;
-      if (!(f.isDeclaration())) {
-        funcDFG(&f, M);
-      }
-    }
-    return true;
-  }
-
   Value *getLoopIndvar(Loop *L, ScalarEvolution &SE) {
     // auto phi = dyn_cast<PHINode>(L);
     PHINode *indvar_phinode = L->getInductionVariable(SE);
@@ -298,8 +173,59 @@ public:
     return indvar;
   }
 
-  PatNode *getBinaryOpPattern(BinaryOperator *curII, Loop *L) {
-    auto opcode = curII->getOpcode();
+  bool isLoopIndVar(Value *v) {
+    auto iter = variant_value.find(v);
+    if (iter != variant_value.end()) {
+      return true;
+    }
+    return false;
+  }
+
+  PatNode *getGEPPattern(GetElementPtrInst *gep_inst, DataLayout *DL) {
+    GEPOperator *gep_op = dyn_cast<GEPOperator>(gep_inst);
+    Value *obj = gep_op->getPointerOperand();
+    // errs() << getValueName(obj) << '\n';
+
+    PatNode **patnode_array = new PatNode *[loop_stack.size()];
+
+    for (int l = loop_stack.size() - 1; l >= 0; l--) {
+      PatNode *gep_node = new PatNode(gep_inst, GEP_INST, getValueName(obj));
+      auto LL = loop_stack[l];
+      int num_operand = gep_inst->getNumOperands();
+      for (int i = 1; i < num_operand; i++) {
+        Value *idx = gep_inst->getOperand(i);
+        PatNode *op_node = getOpPattern(idx, LL);
+        gep_node->addChild(op_node);
+      }
+      dumpPattern(gep_node, 0);
+      patnode_array[l] = gep_node;
+    }
+
+    // PatNode *gep_node1 = new PatNode(gep_inst, GEP_INST, getValueName(obj));
+
+    // // int num_operand = gep_inst->getNumOperands();
+    // for (int i = 1; i < num_operand; i++) {
+    //   Value *idx = gep_inst->getOperand(i);
+    //   PatNode *op_node = getOpPattern(idx, loop_stack[loop_stack.size() -
+    //   2]); gep_node1->addChild(op_node);
+    // }
+    // dumpPattern(gep_node1, 0);
+
+    // PatNode *gep_node2 = new PatNode(gep_inst, GEP_INST, getValueName(obj));
+
+    // // int num_operand = gep_inst->getNumOperands();
+    // for (int i = 1; i < num_operand; i++) {
+    //   Value *idx = gep_inst->getOperand(i);
+    //   PatNode *op_node = getOpPattern(idx, loop_stack[loop_stack.size() -
+    //   3]); gep_node2->addChild(op_node);
+    // }
+    // dumpPattern(gep_node2, 0);
+
+    return patnode_array[0];
+  }
+
+  PatNode *getBinaryOpPattern(BinaryOperator *bin_op, Loop *L) {
+    auto opcode = bin_op->getOpcode();
     // errs() << opcode << '\n';
     std::ostringstream oss;
     switch (opcode) {
@@ -331,69 +257,48 @@ public:
     case llvm::Instruction::FMul:
       oss << '*';
       break;
-    // case llvm::Instruction::Ssub:
-    //   oss << '-';
-    //   break;
-    // case llvm::Instruction::Sdiv:
-    //   oss << '/';
-    //   break;
-    // case llvm::Instruction::Smul:
-    //   oss << '*';
-    //   break;
-    // case 13:
-    // case 14:
-    //   oss << "-";
-    //   break;
-    // case 15:
-    // case 16:
-    //   oss << "*";
-    //   break;
-    // case 17:
-    // case 18:
-    // case 19:
-    //   oss << "/";
-    //   break;
-    // case 20:
-    // case 21:
-    case 22:
-      oss << "%%";
+    case llvm::Instruction::Shl:
+      oss << "<<";
       break;
-    // TODO: Logical shift and arithmetic shift
-    case 23:
-      oss << "<";
-      break;
-    case 24:
-    case 25:
-      oss << ">";
-      break;
-    case 26:
-      oss << "&";
-      break;
-    case 27:
-      oss << "|";
-      break;
-    case 28:
-      oss << "^";
+    case llvm::Instruction::LShr:
+      oss << ">>";
       break;
     default:
       oss << "opcode: " << opcode;
       break;
     }
-    errs() << oss.str() << '\n';
 
-    PatNode *bin_node = new PatNode(curII, BIN_OP, oss.str());
-    errs() << "Process binary op " << getValueName(curII)
-           << ": bin op is " << oss.str() << '\n';
-    // traverse operand
-    int num_operands = curII->getNumOperands();
+    PatNode *bin_node = new PatNode(bin_op, BIN_OP, oss.str());
+#ifdef DEBUG
+    errs() << "Process binary op " << getValueName(bin_op) << ": bin op is "
+           << oss.str() << '\n';
+#endif
+
+    // Traverse all operands
+    int num_operands = bin_op->getNumOperands();
     for (int i = 0; i < num_operands; i++) {
-      auto operand = curII->getOperand(i);
-      errs() << "Process binary op operand " << getValueName(operand)
-           << ": " << getValueName(operand) << '\n';
-      if (!L->isLoopInvariant(operand) || isa<ConstantInt>(operand)) {
-        auto child = getOpPattern(operand, L);
-        errs() << "variant vars: " << getValueName(operand) << '\n';
+      auto operand = bin_op->getOperand(i);
+      // auto operand = dyn_cast<Instruction>(operandi);
+#ifdef DEBUG
+      errs() << "  Process binary op operand " << getValueName(operand) << ": "
+             << getValueName(operand) << '\n';
+#endif
+      if (!L->isLoopInvariant(operand)) {
+#ifdef DEBUG
+        errs() << "  variant vars: " << getValueName(operand) << '\n';
+#endif
+        auto child = getOpPattern(dyn_cast<Instruction>(operand), L);
         bin_node->addChild(child);
+      } else if (isa<ConstantInt>(operand)) {
+#ifdef DEBUG
+        errs() << "  invariant vars: " << getValueName(operand) << '\n';
+#endif
+        auto child = getOpPattern(operand, L);
+        bin_node->addChild(child);
+      } else {
+        PatNode *invar_var =
+            new PatNode(operand, CONSTANT, getValueName(operand));
+        bin_node->addChild(invar_var);
       }
     }
 
@@ -402,18 +307,28 @@ public:
 
   void getSExtPattern(SExtInst *sext_inst) { errs() << '=' << '\n'; }
   PatNode *getCastPattern(CastInst *sext_inst, Loop *L) {
-    errs() << '=' << '\n';
     PatNode *cast_node = new PatNode(sext_inst, CAST_INST,
                                      getValueName(sext_inst->getOperand(0)));
-          errs() << "Process cast " << getValueName(sext_inst)
-            << '\n';
-
+#ifdef DEBUG
+    errs() << "Process cast " << getValueName(sext_inst) << '\n';
+#endif
     // traverse operand
-    auto operand = sext_inst->getOperand(0);
-    errs() << "  Process cast operand " << getValueName(operand)
-            << '\n';
+    auto operand0 = sext_inst->getOperand(0);
+    auto operand = dyn_cast<Instruction>(operand0);
+#ifdef DEBUG
+    errs() << "  Process cast operand " << getValueName(operand) << '\n';
+#endif
     if (!L->isLoopInvariant(operand)) {
-      errs() << "variant vars " << getValueName(operand) << '\n';
+#ifdef DEBUG
+      errs() << "  variant vars " << getValueName(operand) << '\n';
+#endif
+      auto child = getOpPattern(operand, L);
+
+      cast_node->addChild(child);
+    } else if (isa<ConstantInt>(operand)) {
+#ifdef DEBUG
+      errs() << "  invariant vars " << getValueName(operand) << '\n';
+#endif
       auto child = getOpPattern(operand, L);
 
       cast_node->addChild(child);
@@ -423,59 +338,51 @@ public:
   }
 
   PatNode *getConstPattern(ConstantInt *const_v) {
+#ifdef DEBUG
     errs() << "Process constant " << getValueName(const_v)
            << ": value = " << const_v->getSExtValue() << '\n';
+#endif
     std::string temp_result = std::to_string(const_v->getSExtValue());
-    PatNode *const_node =
-        new PatNode(const_v, CONSTANT, (int)const_v->getSExtValue());
+    PatNode *const_node = new PatNode(const_v, CONSTANT, temp_result);
     return const_node;
-  }
-
-  bool isLoopIndVar(Value* v) {
-    auto iter = variant_value.find(v);
-    if (iter != variant_value.end()) {
-      return true;
-    } 
-    return false;
   }
 
   PatNode *getOpPattern(Instruction *curII, Loop *L) {
     if (isLoopIndVar(curII)) {
-      PatNode * indvar_node = new PatNode(curII, LOOP_IND_VAR, getValueName(curII));
+      PatNode *indvar_node =
+          new PatNode(curII, LOOP_IND_VAR, getValueName(curII));
       return indvar_node;
     } else if (isa<BinaryOperator>(curII)) {
       auto bin_op = dyn_cast<BinaryOperator>(curII);
       return getBinaryOpPattern(bin_op, L);
-    }
-    // else if (isa<SExtInst>(curII)) {
-    else if (isa<CastInst>(curII)) {
+    } else if (isa<CastInst>(curII)) {
       auto sext_inst = dyn_cast<CastInst>(curII);
       return getCastPattern(sext_inst, L);
     } else if (isa<ConstantInt>(curII)) {
       auto constant_v = dyn_cast<ConstantInt>(curII);
       return getConstPattern(constant_v);
+    } else if (isa<PHINode>(curII)) {
+      PatNode *phi_node = new PatNode(curII, CONSTANT, getValueName(curII));
+      return phi_node;
     }
 
     return nullptr;
-    // } else if (isa<GetElementPtrInst>(curII)) {
-    //   auto *gep_inst = dyn_cast<GetElementPtrInst>(curII);
-    //   getGEPPattern(gep_inst, DL);
-    // }
   }
 
   void handleLoop(Loop *L, LoopInfo &LI, DataLayout *DL, ScalarEvolution &SE,
                   Function *F) {
-
+    loop_stack.push_back(L);
     Value *indvar = getLoopIndvar(L, SE);
     // getValueName(indvar, F)
 
     variant_value.insert(make_pair(indvar, std::string("xx")));
 
-    errs() << "Loop index var:" << getValueName(indvar) << '\n\n';
+    errs() << "Loop index var:" << getValueName(indvar) << "\n\n";
     for (Loop::block_iterator BB = L->block_begin(), BEnd = L->block_end();
          BB != BEnd; ++BB) {
       BasicBlock *curBB = *BB;
-      // check if bb belongs to L or inner loop, traverse the BB of Loop itself.
+      // check if bb belongs to L or inner loop, traverse the BB of Loop
+      // itself.
       if (L != LI.getLoopFor(curBB)) {
         continue;
       }
@@ -484,122 +391,60 @@ public:
 
         Instruction *curII = &*II;
 
-        if (!isa<GetElementPtrInst>(curII)) {
-
-          int num_operands = curII->getNumOperands();
-
-          bool is_variant = false;
-          for (int i = 0; i < num_operands; i++) {
-            Value *operand = curII->getOperand(i);
-
-            auto iter = variant_value.find(operand);
-            if (iter != variant_value.end()) {
-              is_variant = true;
-            }
-            // if (variant_value.count(variant_value) > 0) {
-            //   is_variant = true;
-            // }
-            // errs() << getValueName(operand) << '\n';
-          }
-          if (is_variant == true) {
-            errs() << *curII << '\n';
-            for (int i = 0; i < num_operands; i++) {
-              Value *operand = curII->getOperand(i);
-              if (!L->isLoopInvariant(operand)) {
-                errs() << "variant vars: " << getValueName(operand) << '\n';
-              } else {
-                errs() << "invariant vars: " << getValueName(operand) << '\n';
-              }
-            }
-            errs() << '\n';
-            // variant_value.insert(std::make_pair(curII, std::string("xx")));
-
-            // Analyze the pattern
-            // getOpPattern(curII);
-          }
-        }
-
-        // if (!L->hasLoopInvariantOperands(curII)) {
-        // 	errs() << *curII << '\n';
-        // }
-
-        if (curII->getOpcode() == llvm::Instruction::GetElementPtr) {
+        if (isa<GetElementPtrInst>(curII)) {
           errs() << *(curII) << "\n";
           GetElementPtrInst *gepinst = dyn_cast<GetElementPtrInst>(curII);
 
-          // PatNode* pat_node = PatNode(curII, GEP_INST, getValueName(curII));
           //  auto user = dyn_cast<User>(curII);
-          auto pat = getGEPPattern(gepinst, DL, L);
+          auto gep_pat = getGEPPattern(gepinst, DL);
 
-          // errs() << pat << "\n";
-
-          GEPOperator *gepop = dyn_cast<GEPOperator>(curII);
-          Value *obj = gepop->getPointerOperand();
-          // if(gepinst->hasIndices()){
-
-          // }
-          Value *idx = gepinst->getOperand(1);
-          // MDNode* N1 = cast<MDNode>(gepinst->getOperand(0));
-          // MDString * mds = dyn_cast_or_null<MDString>(N1->getOperand(0));
-          // errs() << mds->getString() << '\n';
-          // DIVariable *var1(N1);
-          // errs() << var1->getName() << '\n';
-
-          // MDNode* N2 = cast<MDNode>(gepinst->getOperand(1));
-          // DIVariable *var2(N2);
-          // errs() << var2->getName() << '\n';
-
-          // if (startWith(getValueName(idx),std::string("#val"))) {
-
-          // }
-          errs() << getOriginalName(obj, F) << "[" << getOriginalName(idx, F)
-                 << "]" << '\n';
-          // errs() << idx << *idx<< '\n';
-          // errs() <<  "[" << getOriginalName(obj, F) << "]" << '\n';
+          // // old version for simple pattern A[i]
+          // GEPOperator *gepop = dyn_cast<GEPOperator>(curII);
+          // Value *obj = gepop->getPointerOperand();
+          // Value *idx = gepinst->getOperand(1);
+          // errs() << getOriginalName(obj, F) << "[" << getOriginalName(idx, F)
+          //        << "]" << '\n';
         }
 
-        // // errs() << getValueName(curII) << "\n";
-        // switch (curII->getOpcode()) {
-        // // Load and store instruction
-        // case llvm::Instruction::Load: {
-        //   LoadInst *linst = dyn_cast<LoadInst>(curII);
-        //   Value *loadValPtr = linst->getPointerOperand();
-        //   edges.push_back(edge(node(loadValPtr, getValueName(loadValPtr)),
-        //                        node(curII, getValueName(curII))));
-        //   break;
-        // }
-        // case llvm::Instruction::Store: {
-        //   StoreInst *sinst = dyn_cast<StoreInst>(curII);
-        //   Value *storeValPtr = sinst->getPointerOperand();
-        //   Value *storeVal = sinst->getValueOperand();
-        //   edges.push_back(edge(node(storeVal, getValueName(storeVal)),
-        //                        node(curII, getValueName(curII))));
-        //   edges.push_back(edge(node(curII, getValueName(curII)),
-        //                        node(storeValPtr,
-        //                        getValueName(storeValPtr))));
-        //   break;
-        // }
-        // default: {
-        //   for (Instruction::op_iterator op = curII->op_begin(),
-        //                                 opEnd = curII->op_end();
-        //        op != opEnd; ++op) {
-        //     Instruction *tempIns;
-        //     if (dyn_cast<Instruction>(*op)) {
-        //       edges.push_back(edge(node(op->get(), getValueName(op->get())),
-        //                            node(curII, getValueName(curII))));
-        //     }
-        //   }
-        //   break;
-        // }
-        // }
-        // BasicBlock::iterator next = II;
-        // // errs() << curII << "\n";
-        // nodes.push_back(node(curII, getValueName(curII)));
-        // ++next;
-        // if (next != IEnd) {
-        //   inst_edges.push_back(edge(node(curII, getValueName(curII)),
-        //                             node(&*next, getValueName(&*next))));
-        // }
+        switch (curII->getOpcode()) {
+        // Load and store instruction
+        case llvm::Instruction::Load: {
+          LoadInst *linst = dyn_cast<LoadInst>(curII);
+          Value *loadValPtr = linst->getPointerOperand();
+          edges.push_back(edge(node(loadValPtr, getValueName(loadValPtr)),
+                               node(curII, getValueName(curII))));
+          break;
+        }
+        case llvm::Instruction::Store: {
+          StoreInst *sinst = dyn_cast<StoreInst>(curII);
+          Value *storeValPtr = sinst->getPointerOperand();
+          Value *storeVal = sinst->getValueOperand();
+          edges.push_back(edge(node(storeVal, getValueName(storeVal)),
+                               node(curII, getValueName(curII))));
+          edges.push_back(edge(node(curII, getValueName(curII)),
+                               node(storeValPtr, getValueName(storeValPtr))));
+          break;
+        }
+        default: {
+          for (Instruction::op_iterator op = curII->op_begin(),
+                                        opEnd = curII->op_end();
+               op != opEnd; ++op) {
+            Instruction *tempIns;
+            if (dyn_cast<Instruction>(*op)) {
+              edges.push_back(edge(node(op->get(), getValueName(op->get())),
+                                   node(curII, getValueName(curII))));
+            }
+          }
+          break;
+        }
+        }
+        BasicBlock::iterator next = II;
+        nodes.push_back(node(curII, getValueName(curII)));
+        ++next;
+        if (next != IEnd) {
+          inst_edges.push_back(edge(node(curII, getValueName(curII)),
+                                    node(&*next, getValueName(&*next))));
+        }
       }
 
       Instruction *terminator = curBB->getTerminator();
@@ -616,6 +461,7 @@ public:
     for (SL = subLoops.begin(), SLE = subLoops.end(); SL != SLE; ++SL) {
       handleLoop(*SL, LI, DL, SE, F);
     }
+    loop_stack.pop_back();
   }
 
   void funcDFG(Function *F, Module &M) {
@@ -680,6 +526,34 @@ public:
     file.close();
 
     return;
+  }
+
+  bool runOnModule(Module &M) override {
+    // Mark all recursive functions
+    // unordered_map<CallGraphNode *, Function *> callGraphNodeMap;
+    // auto &cg = getAnalysis<CallGraph>();
+    // for (auto &f: M) {
+    // 	auto cgn = cg[&f];
+    // 	callGraphNodeMap[cgn] = &f;
+    // }
+    // scc_iterator<CallGraph *> cgSccIter = scc_begin(&cg);
+    // while (!cgSccIter.isAtEnd()) {
+    // 	if (cgSccIter.hasLoop()) {
+    // 		const vector<CallGraphNode*>& nodeVec = *cgSccIter;
+    // 		for (auto cgn: nodeVec) {
+    // 			auto f = callGraphNodeMap[cgn];
+    // 			recSet.insert(f);
+    // 		}
+    // 	}
+    // 	++cgSccIter;
+    // }
+
+    for (auto &F : M) {
+      if (!(F.isDeclaration())) {
+        funcDFG(&F, M);
+      }
+    }
+    return true;
   }
 };
 } // namespace

@@ -10,11 +10,11 @@ int main() {
   int n = rand() % 100;
   int x = pow(2, n);
   for (int i = 0; i < N; i++) {
-    // x +=4;
+    x += 4;
     for (int j = 0; j < N; j++) {
       for (int k = 0; k < N; k++) {
         // x +=4;
-        sum += X[(i + 2) / x][(j * 2 - 1) / 3][k + 3];
+        sum += X[(i + 2) / x][(j * 2 - 1) / 4][k + 3];
       }
     }
   }
