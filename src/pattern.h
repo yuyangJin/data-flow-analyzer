@@ -112,6 +112,9 @@ public:
 };
 
 void dumpPattern(PatNode *pn, int depth) {
+//   if (pn == nullptr) {
+//     return;
+//   }
   if (!pn) {
     return;
   }

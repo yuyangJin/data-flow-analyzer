@@ -248,7 +248,7 @@ public:
     PatNode *gep_node = new PatNode(gep_inst, GEP_INST, getValueName(obj));
 
     int num_operand = gep_inst->getNumOperands();
-    for (int i = 2; i < num_operand; i++) {
+    for (int i = 1; i < num_operand; i++) {
       Value *idx = gep_inst->getOperand(i);
       errs() << getValueName(idx) << '\n';
       errs() << *idx << '\n';
@@ -428,6 +428,7 @@ public:
     std::string temp_result = std::to_string(const_v->getSExtValue());
     PatNode *const_node =
         new PatNode(const_v, CONSTANT, (int)const_v->getSExtValue());
+    return const_node;
   }
 
   bool isLoopIndVar(Value* v) {
