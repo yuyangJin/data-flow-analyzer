@@ -66,6 +66,48 @@ public:
     ModulePass::getAnalysisUsage(AU);
   }
 
+  void dumpGraph(raw_fd_ostream &file, Function *F) {
+    // errs() << "Write\n";
+    file << "digraph \"DFG for'" + F->getName() + "\' function\" {\n";
+
+    // dump node
+    for (node_list::iterator node = nodes.begin(), node_end = nodes.end();
+         node != node_end; ++node) {
+      // errs() << "Node First:" << node->first << "\n";
+      // errs() << "Node Second:" << node-> second << "\n";
+      if (dyn_cast<Instruction>(node->first)) {
+        // file << "\tNode" << node->second << "[shape=record, label=\""
+        //      << *(node->first) << "\"];\n";
+        file << "\tNode" << node->first << "[shape=record, label=\""
+             << node->second.c_str() << "\"];\n";
+      } else {
+        file << "\tNode" << node->first << "[shape=record, label=\""
+             << node->second.c_str() << "\"];\n";
+      }
+    }
+
+    //  dump instruction edges
+#ifdef CFG
+    for (edge_list::iterator edge = inst_edges.begin(),
+                             edge_end = inst_edges.end();
+         edge != edge_end; ++edge) {
+      file << "\tNode" << edge->first.first << " -> Node" <<
+      edge->second.first << "\n";
+    }
+#endif
+
+    // dump data flow edges
+    file << "edge [color=red]"
+         << "\n";
+    for (edge_list::iterator edge = edges.begin(), edge_end = edges.end();
+         edge != edge_end; ++edge) {
+      file << "\tNode" << edge->first.first << " -> Node" << edge->second.first
+           << "\n";
+    }
+
+    file << "}\n";
+  }
+
   // Convert instruction to string
   std::string convertIns2Str(Instruction *ins) {
     std::string temp_str;
@@ -73,10 +115,6 @@ public:
     ins->print(os);
     return os.str();
   }
-
-  // std::string removeCharFromStr(std::string, char c) {
-
-  // }
 
   template <class ForwardIt, class T>
   ForwardIt remove(ForwardIt first, ForwardIt last, const T &value) {
@@ -489,41 +527,8 @@ public:
       handleLoop(L, LI, DL, SE, F);
     }
 
-    // errs() << "Write\n";
-    file << "digraph \"DFG for'" + F->getName() + "\' function\" {\n";
+    dumpGraph(file, F);
 
-    // dump node
-    for (node_list::iterator node = nodes.begin(), node_end = nodes.end();
-         node != node_end; ++node) {
-      // errs() << "Node First:" << node->first << "\n";
-      // errs() << "Node Second:" << node-> second << "\n";
-      if (dyn_cast<Instruction>(node->first))
-        file << "\tNode" << node->second << "[shape=record, label=\""
-             << *(node->first) << "\"];\n";
-      // file << "\tNode" << node->first << "[shape=record, label=\"" <<
-      // node->second.c_str() << "\"];\n";
-      else
-        file << "\tNode" << node->first << "[shape=record, label=\""
-             << node->second.c_str() << "\"];\n";
-    }
-    // errs() << "Write Done\n";
-    //  dump instruction edges
-    for (edge_list::iterator edge = inst_edges.begin(),
-                             edge_end = inst_edges.end();
-         edge != edge_end; ++edge) {
-      // file << "\tNode" << edge->first.first << " -> Node" <<
-      // edge->second.first << "\n";
-    }
-    // dump data flow edges
-    file << "edge [color=red]"
-         << "\n";
-    for (edge_list::iterator edge = edges.begin(), edge_end = edges.end();
-         edge != edge_end; ++edge) {
-      file << "\tNode" << edge->first.first << " -> Node" << edge->second.first
-           << "\n";
-    }
-    // errs() << "Write Done\n";
-    file << "}\n";
     file.close();
 
     return;
