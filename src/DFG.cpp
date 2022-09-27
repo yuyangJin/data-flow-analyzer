@@ -32,7 +32,7 @@
 #include <sstream>
 #include <string>
 
-#define DEBUG
+// #define DEBUG
 
 using namespace llvm;
 namespace {
@@ -345,7 +345,11 @@ public:
     return bin_node;
   }
 
-  void getSExtPattern(SExtInst *sext_inst) { errs() << '=' << '\n'; }
+  void getSExtPattern(SExtInst *sext_inst) { 
+#ifdef DEBUG  
+    errs() << '=' << '\n'; 
+#endif
+  }
   PatNode *getCastPattern(CastInst *sext_inst, Loop *L) {
     PatNode *cast_node = new PatNode(sext_inst, CAST_INST,
                                      getValueName(sext_inst->getOperand(0)));
@@ -417,12 +421,13 @@ public:
 
     variant_value.insert(make_pair(indvar, std::string("xx")));
 
-    LoopPat* loop_pat = nullptr;
+    LoopPat* loop_pat = new LoopPat();
     LoopMemPatNode* loop_node = new LoopMemPatNode(LOOP_NODE, loop_pat);
     parent_node->AddChild(loop_node);
 
 
     errs() << "Loop index var:" << getValueName(indvar) << "\n\n";
+    
     for (Loop::block_iterator BB = L->block_begin(), BEnd = L->block_end();
          BB != BEnd; ++BB) {
       BasicBlock *curBB = *BB;
@@ -437,7 +442,7 @@ public:
         Instruction *curII = &*II;
 
         if (isa<GetElementPtrInst>(curII)) {
-          errs() << *(curII) << "\n";
+          // errs() << *(curII) << "\n";
           GetElementPtrInst *gepinst = dyn_cast<GetElementPtrInst>(curII);
 
           //  auto user = dyn_cast<User>(curII);
@@ -518,7 +523,7 @@ public:
     ScalarEvolution &SE = getAnalysis<ScalarEvolutionWrapperPass>(*F).getSE();
     std::error_code error;
     enum sys::fs::OpenFlags F_None;
-    errs() << func_id << ": " << F->getName().str() << "\n";
+    // errs() << func_id << ": " << F->getName().str() << "\n";
     StringRef fileName(std::to_string(func_id) + ".dot");
     func_id++;
     raw_fd_ostream file(fileName, error, F_None);
