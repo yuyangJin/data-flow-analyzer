@@ -1,8 +1,10 @@
 add_llvm_library(DFGPass MODULE
     utils.h
-    graph.cpp
+    # graph.cpp
     DFG.cpp
 )
+
+# target_link_libraries(DFGPass LLVM)
 
 # Use C++11 to compile our pass (i.e., supply -std=c++11).
 target_compile_features(DFGPass PRIVATE cxx_range_for cxx_auto_type)

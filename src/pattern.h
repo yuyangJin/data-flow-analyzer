@@ -1,3 +1,5 @@
+#ifndef PATTERN_H_
+#define PATTERN_H_
 #include <llvm/IR/Value.h>
 
 #include <iostream>
@@ -152,3 +154,5 @@ void dumpPattern(PatNode *pn, int depth) {
 // }
 
 // Pattern::
+
+#endif

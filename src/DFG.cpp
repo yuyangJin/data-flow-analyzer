@@ -26,6 +26,7 @@
 //#include <llvm/DebugInfo.h>
 
 #include "pattern.h"
+#include "loop_mem_pat_node.h"
 #include <list>
 #include <map>
 #include <sstream>
@@ -149,51 +150,51 @@ public:
     return temp_result;
   }
 
-  const MDNode *findVar(const Value *V, const Function *F) {
-    for (const_inst_iterator Iter = inst_begin(F), End = inst_end(F);
-         Iter != End; ++Iter) {
-      const Instruction *I = &*Iter;
-      if (const DbgDeclareInst *DbgDeclare = dyn_cast<DbgDeclareInst>(I)) {
-        if (DbgDeclare->getAddress() == V) {
-          return DbgDeclare->getVariable();
-          // return DbgDeclare->getOperand(1);
-        }
-      } else if (const DbgValueInst *DbgValue = dyn_cast<DbgValueInst>(I)) {
-        // errs() << "\nvalue:" <<DbgValue->getValue()  <<
-        // *(DbgValue->getValue()) << "\nV:" << V << *V<< "\n";
-        if (DbgValue->getValue() == V) {
-          return DbgValue->getVariable();
-          // return DbgValue->getOperand(1);
-        }
-      }
-    }
-    return nullptr;
-  }
+  // const MDNode *findVar(const Value *V, const Function *F) {
+  //   for (const_inst_iterator Iter = inst_begin(F), End = inst_end(F);
+  //        Iter != End; ++Iter) {
+  //     const Instruction *I = &*Iter;
+  //     if (const DbgDeclareInst *DbgDeclare = dyn_cast<DbgDeclareInst>(I)) {
+  //       if (DbgDeclare->getAddress() == V) {
+  //         return DbgDeclare->getVariable();
+  //         // return DbgDeclare->getOperand(1);
+  //       }
+  //     } else if (const DbgValueInst *DbgValue = dyn_cast<DbgValueInst>(I)) {
+  //       // errs() << "\nvalue:" <<DbgValue->getValue()  <<
+  //       // *(DbgValue->getValue()) << "\nV:" << V << *V<< "\n";
+  //       if (DbgValue->getValue() == V) {
+  //         return DbgValue->getVariable();
+  //         // return DbgValue->getOperand(1);
+  //       }
+  //     }
+  //   }
+  //   return nullptr;
+  // }
 
-  std::string getDbgName(const Value *V, Function *F) {
-    // TODO handle globals as well
+  // std::string getDbgName(const Value *V, Function *F) {
+  //   // TODO handle globals as well
 
-    // const Function* F = findEnclosingFunc(V);
-    if (!F)
-      return V->getName().str();
+  //   // const Function* F = findEnclosingFunc(V);
+  //   if (!F)
+  //     return V->getName().str();
 
-    const MDNode *Var = findVar(V, F);
-    if (!Var)
-      return "tmp";
+  //   const MDNode *Var = findVar(V, F);
+  //   if (!Var)
+  //     return "tmp";
 
-    // MDString * mds = dyn_cast_or_null<MDString>(Var->getOperand(0));
-    // //errs() << mds->getString() << '\n';
-    // if(mds->getString().str() != std::string("")) {
-    // return mds->getString().str();
-    // }else {
-    // 	return "##";
-    // }
+  //   // MDString * mds = dyn_cast_or_null<MDString>(Var->getOperand(0));
+  //   // //errs() << mds->getString() << '\n';
+  //   // if(mds->getString().str() != std::string("")) {
+  //   // return mds->getString().str();
+  //   // }else {
+  //   // 	return "##";
+  //   // }
 
-    auto var = dyn_cast<DIVariable>(Var);
-    // DIVariable *var(Var);
+  //   auto var = dyn_cast<DIVariable>(Var);
+  //   // DIVariable *var(Var);
 
-    return var->getName().str();
-  }
+  //   return var->getName().str();
+  // }
 
   bool endWith(const std::string &str, const std::string &tail) {
     return str.compare(str.size() - tail.size(), tail.size(), tail) == 0;
@@ -409,12 +410,17 @@ public:
   }
 
   void handleLoop(Loop *L, LoopInfo &LI, DataLayout *DL, ScalarEvolution &SE,
-                  Function *F) {
+                  Function *F, LoopMemPatNode* parent_node) {
     loop_stack.push_back(L);
     Value *indvar = getLoopIndvar(L, SE);
     // getValueName(indvar, F)
 
     variant_value.insert(make_pair(indvar, std::string("xx")));
+
+    LoopPat* loop_pat = nullptr;
+    LoopMemPatNode* loop_node = new LoopMemPatNode(LOOP_NODE, loop_pat);
+    parent_node->AddChild(loop_node);
+
 
     errs() << "Loop index var:" << getValueName(indvar) << "\n\n";
     for (Loop::block_iterator BB = L->block_begin(), BEnd = L->block_end();
@@ -436,6 +442,10 @@ public:
 
           //  auto user = dyn_cast<User>(curII);
           auto gep_pat = getGEPPattern(gepinst, DL);
+
+          MemAcsPat* mem_acs_pat = new MemAcsPat(gep_pat);
+          LoopMemPatNode* mem_acs_node = new LoopMemPatNode(MEM_ACS_NODE, mem_acs_pat);
+          loop_node->AddChild(mem_acs_node);
 
           // // old version for simple pattern A[i]
           // GEPOperator *gepop = dyn_cast<GEPOperator>(curII);
@@ -498,7 +508,7 @@ public:
     std::vector<Loop *> subLoops = L->getSubLoops();
     Loop::iterator SL, SLE;
     for (SL = subLoops.begin(), SLE = subLoops.end(); SL != SLE; ++SL) {
-      handleLoop(*SL, LI, DL, SE, F);
+      handleLoop(*SL, LI, DL, SE, F, loop_node);
     }
     loop_stack.pop_back();
   }
@@ -512,22 +522,24 @@ public:
     StringRef fileName(std::to_string(func_id) + ".dot");
     func_id++;
     raw_fd_ostream file(fileName, error, F_None);
-    // errs() << "Hello\n";
+
     edges.clear();
     nodes.clear();
     inst_edges.clear();
 
-    // std::map <Value*, MDNode*> value2MD;
-
     DataLayout *DL = new DataLayout(&M);
+
+    LoopMemPatNode* func_node = new LoopMemPatNode(FUNC_NODE, F->getName().str());
 
     for (LoopInfo::iterator LL = LI.begin(), LEnd = LI.end(); LL != LEnd;
          ++LL) {
       Loop *L = *LL;
-      handleLoop(L, LI, DL, SE, F);
+      handleLoop(L, LI, DL, SE, F, func_node);
     }
 
     dumpGraph(file, F);
+
+    dumpLoopMemPatTree(func_node, 0);
 
     file.close();
 
