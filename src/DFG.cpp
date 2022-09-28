@@ -25,6 +25,7 @@
 #include <llvm/Support/raw_ostream.h>
 //#include <llvm/DebugInfo.h>
 
+#include "dbg.h"
 #include "pattern.h"
 #include "loop_mem_pat_node.h"
 #include <list>
@@ -221,6 +222,21 @@ public:
     return false;
   }
 
+  Value *getLoopInitVar(Loop *L, ScalarEvolution &SE) {
+    auto loop_bound = L->getBounds(SE);
+    return &(loop_bound->getInitialIVValue());
+  }
+
+  Value *getLoopStepVar(Loop *L, ScalarEvolution &SE) {
+    auto loop_bound = L->getBounds(SE);
+    return loop_bound->getStepValue();
+  }
+
+  Value *getLoopEndVar(Loop *L, ScalarEvolution &SE) {
+    auto loop_bound = L->getBounds(SE);
+    return &(loop_bound->getFinalIVValue());
+  }
+
   PatNode *getGEPPattern(GetElementPtrInst *gep_inst, DataLayout *DL) {
     GEPOperator *gep_op = dyn_cast<GEPOperator>(gep_inst);
     Value *obj = gep_op->getPointerOperand();
@@ -237,7 +253,7 @@ public:
         PatNode *op_node = getOpPattern(idx, LL);
         gep_node->addChild(op_node);
       }
-      dumpPattern(gep_node, 0);
+      // dumpPattern(gep_node, 0);
       patnode_array[l] = gep_node;
     }
 
@@ -417,17 +433,33 @@ public:
                   Function *F, LoopMemPatNode* parent_node) {
     loop_stack.push_back(L);
     Value *indvar = getLoopIndvar(L, SE);
+    Value *loop_init_var = getLoopInitVar(L, SE);
+    Value *loop_step_var = getLoopStepVar(L, SE);
+    Value *loop_end_var = getLoopEndVar(L, SE);
     // getValueName(indvar, F)
 
     variant_value.insert(make_pair(indvar, std::string("xx")));
 
-    LoopPat* loop_pat = new LoopPat();
+    std::string loop_ind_var_str = getValueName(indvar);
+    std::string loop_init_var_str = getValueName(loop_init_var);
+    std::string loop_step_var_str = getValueName(loop_step_var);
+    std::string loop_end_var_str = getValueName(loop_end_var);
+    // dbg(loop_init_var_str);
+    // dbg(loop_step_var_str);
+    // dbg(loop_end_var_str);
+    PatNode* loop_init_var_pat_node = getOpPattern(loop_init_var, L);
+    PatNode* loop_step_var_pat_node = getOpPattern(loop_step_var, L);
+    PatNode* loop_end_var_pat_node = getOpPattern(loop_end_var, L);
+
+
+    // LoopPat* loop_pat = new LoopPat(loop_ind_var_str);
+    LoopPat* loop_pat = new LoopPat(loop_ind_var_str, loop_init_var_pat_node, loop_end_var_pat_node, loop_step_var_pat_node);
     LoopMemPatNode* loop_node = new LoopMemPatNode(LOOP_NODE, loop_pat);
-    parent_node->AddChild(loop_node);
+    parent_node->addChild(loop_node);
 
+    // dbg(indvar); 
+    // errs() << "Loop index var:" << getValueName(indvar) << "\n\n";
 
-    errs() << "Loop index var:" << getValueName(indvar) << "\n\n";
-    
     for (Loop::block_iterator BB = L->block_begin(), BEnd = L->block_end();
          BB != BEnd; ++BB) {
       BasicBlock *curBB = *BB;
@@ -450,7 +482,7 @@ public:
 
           MemAcsPat* mem_acs_pat = new MemAcsPat(gep_pat);
           LoopMemPatNode* mem_acs_node = new LoopMemPatNode(MEM_ACS_NODE, mem_acs_pat);
-          loop_node->AddChild(mem_acs_node);
+          loop_node->addChild(mem_acs_node);
 
           // // old version for simple pattern A[i]
           // GEPOperator *gepop = dyn_cast<GEPOperator>(curII);
@@ -542,7 +574,7 @@ public:
       handleLoop(L, LI, DL, SE, F, func_node);
     }
 
-    dumpGraph(file, F);
+    // dumpGraph(file, F);
 
     dumpLoopMemPatTree(func_node, 0);
 

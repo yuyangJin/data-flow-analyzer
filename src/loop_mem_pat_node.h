@@ -14,15 +14,23 @@ enum loop_mem_pat_node_type_t {
 
 class LoopPat {
 private:
-    std::string ind_var; // for loop ind var
-    PatNode* start;
-    PatNode* end;
-    PatNode* step;
+    std::string _ind_var; // for loop ind var
+    PatNode* _start;
+    PatNode* _end;
+    PatNode* _step;
 
 public:
-    LoopPat() {}
-    void dump() {
+    LoopPat() {_ind_var = std::string(" ");}
+    LoopPat(std::string& ind_var) :
+        _ind_var(std::string(ind_var)) {}
+    LoopPat(std::string& ind_var, PatNode* start, PatNode* end, PatNode* step) :
+        _ind_var(std::string(ind_var)), _start(start), _end(end), _step(step) {}    
+    void dump(int depth) {
         // do nothing now
+        std::cout << _ind_var << std::endl;
+        dumpPattern(_start, depth);
+        dumpPattern(_end, depth);
+        dumpPattern(_step, depth);
     }
 };
 
@@ -47,24 +55,29 @@ private:
     std::vector<LoopMemPatNode *> children;
 
 public:
-    LoopMemPatNode(loop_mem_pat_node_type_t type)
-     : type(static_cast<loop_mem_pat_node_type_t>(type)) { num_children = 0; loop_pat = nullptr;mem_acs_pat = nullptr;}
     LoopMemPatNode(loop_mem_pat_node_type_t type, const std::string& func_name)
-     : type(static_cast<loop_mem_pat_node_type_t>(type)), func_name(std::string(func_name)) {num_children = 0; loop_pat = nullptr;mem_acs_pat = nullptr; }
+     : type(static_cast<loop_mem_pat_node_type_t>(type)), func_name(std::string(func_name)) {
+        num_children = 0; 
+        loop_pat = nullptr;
+        mem_acs_pat = nullptr; 
+     }
     LoopMemPatNode(loop_mem_pat_node_type_t type, LoopPat* _loop_pat)
      : type(static_cast<loop_mem_pat_node_type_t>(type)) {
         loop_pat = _loop_pat;
         num_children = 0; 
         mem_acs_pat = nullptr;
+
      }
     LoopMemPatNode(loop_mem_pat_node_type_t type, MemAcsPat* _mem_acs_pat)
      : type(static_cast<loop_mem_pat_node_type_t>(type)) { 
-        num_children = 0; loop_pat = nullptr;
+        num_children = 0; 
+        loop_pat = nullptr;
         mem_acs_pat = _mem_acs_pat;
+
      }
     
 
-    void AddChild(LoopMemPatNode * child) {
+    void addChild(LoopMemPatNode * child) {
         num_children ++; 
         children.push_back(child);
     }
@@ -100,6 +113,11 @@ public:
 
     LoopPat* getLoopPat() {
         if (type == LOOP_NODE) {
+        //             if (loop_pat == nullptr) {
+        //     std::cout << "loop_pat is nullptr" << std::endl;
+        // } else {
+        //     std::cout << "loop_pat is not nullptr" << std::endl;
+        // }
             return loop_pat;
         } else {
             return nullptr;
@@ -107,10 +125,17 @@ public:
     }
 
     MemAcsPat* getMemAcsPat() {
+        //         if (mem_acs_pat == nullptr) {
+        //     std::cout << "mem_acs_pat is nullptr" << std::endl;
+        // } else {
+        //     std::cout << "mem_acs_pat is not nullptr" << std::endl;
+        // }
         return mem_acs_pat;
     }
 
 };
+
+
 
 void dumpLoopMemPatTree(LoopMemPatNode *node, int depth) {
 
@@ -127,12 +152,15 @@ void dumpLoopMemPatTree(LoopMemPatNode *node, int depth) {
     std::cout << node->getFuncName() << " \n";
   } else if (type == LOOP_NODE) {
     auto loop_pat = node->getLoopPat();
-    if (!loop_pat) {
-        loop_pat->dump();
+    if (loop_pat) {
+        loop_pat->dump(depth);
+    } else {
+        std::cout << "none loop_pat";
     }
   } else if (type == MEM_ACS_NODE) {
     auto mem_acs_pat = node->getMemAcsPat();
-    if (!mem_acs_pat) {
+    if (mem_acs_pat) {
+        std::cout << std::endl;
         mem_acs_pat->dump(depth);
     } else {
         std::cout << "none mem_acs_pat";
