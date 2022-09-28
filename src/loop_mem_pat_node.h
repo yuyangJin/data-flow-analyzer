@@ -32,16 +32,47 @@ public:
         dumpPattern(_end, depth);
         dumpPattern(_step, depth);
     }
+
+    std::string& getIndVar() {
+        return _ind_var;
+    }
+
+    int getStartVal() {
+        if (_start->getType() == CONSTANT) {
+            int val = stoi(_start->getConstantNum());
+            return val;
+        }
+        return 0;
+    }
+
+    int getEndVal() {
+        if (_end->getType() == CONSTANT) {
+            int val = stoi(_end->getConstantNum());
+            return val;
+        }
+        return 0;
+    }
+
+    int getStepVal() {
+        if (_step->getType() == CONSTANT) {
+            int val = stoi(_step->getConstantNum());
+            return val;
+        }
+        return 0;
+    }
 };
 
 class MemAcsPat {
 private:
-    PatNode* pat;
+    PatNode* _pat;
 public:
     MemAcsPat(PatNode* pat)
-     : pat(pat) {}
+     : _pat(pat) {}
     void dump(int depth) {
-        dumpPattern(pat, depth);
+        dumpPattern(_pat, depth);
+    }
+    PatNode* getPatNode() {
+        return _pat;
     }
 };
 
@@ -53,6 +84,7 @@ private:
     MemAcsPat* mem_acs_pat;
     int num_children;
     std::vector<LoopMemPatNode *> children;
+    LoopMemPatNode* _parent = nullptr;
 
 public:
     LoopMemPatNode(loop_mem_pat_node_type_t type, const std::string& func_name)
@@ -80,6 +112,11 @@ public:
     void addChild(LoopMemPatNode * child) {
         num_children ++; 
         children.push_back(child);
+        child->addParent(this);
+    }
+
+    void addParent(LoopMemPatNode * parent){
+        _parent = parent;
     }
 
     loop_mem_pat_node_type_t getType() {
@@ -100,6 +137,19 @@ public:
         } else {
             return nullptr;
         }
+    }
+
+    LoopMemPatNode* getParent() {
+        return _parent;
+    }
+
+    bool hasLoopChild() {
+        for (auto child: children) {
+            if (child->getType() == LOOP_NODE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     std::string& getFuncName() {

@@ -28,6 +28,7 @@
 #include "dbg.h"
 #include "pattern.h"
 #include "loop_mem_pat_node.h"
+#include "loop_unroll_analysis.h"
 #include <list>
 #include <map>
 #include <sstream>
@@ -550,6 +551,21 @@ public:
     loop_stack.pop_back();
   }
 
+  void loopDepAnalysis(LoopMemPatNode* n) {
+    auto type = n->getType();
+    auto has_loop_child = n->hasLoopChild();
+    if(type == LOOP_NODE && has_loop_child == false) {
+      LoopUnrollAnalysis* loop_unroll_analysis = new LoopUnrollAnalysis(n);
+      loop_unroll_analysis->checkDependence();
+    }
+    
+    auto children = n->getChildren();
+    for(auto child: children) {
+      loopDepAnalysis(child);
+    }
+
+  }
+
   void funcDFG(Function *F, Module &M) {
     LoopInfo &LI = getAnalysis<LoopInfoWrapperPass>(*F).getLoopInfo();
     ScalarEvolution &SE = getAnalysis<ScalarEvolutionWrapperPass>(*F).getSE();
@@ -577,6 +593,8 @@ public:
     // dumpGraph(file, F);
 
     dumpLoopMemPatTree(func_node, 0);
+
+    loopDepAnalysis(func_node);
 
     file.close();
 
