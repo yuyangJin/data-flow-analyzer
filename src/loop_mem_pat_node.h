@@ -62,17 +62,26 @@ public:
     }
 };
 
+enum access_mode_t {
+    READ = 200,
+    WRITE = 201
+};
+
 class MemAcsPat {
 private:
     PatNode* _pat;
+    access_mode_t _mode;
 public:
-    MemAcsPat(PatNode* pat)
-     : _pat(pat) {}
+    MemAcsPat(PatNode* pat, access_mode_t mode)
+     : _pat(pat), _mode(mode) {}
     void dump(int depth) {
         dumpPattern(_pat, depth);
     }
     PatNode* getPatNode() {
         return _pat;
+    }
+    access_mode_t getAccessMode() {
+        return _mode;
     }
 };
 

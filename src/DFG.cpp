@@ -481,9 +481,27 @@ public:
           //  auto user = dyn_cast<User>(curII);
           auto gep_pat = getGEPPattern(gepinst, DL);
 
-          MemAcsPat* mem_acs_pat = new MemAcsPat(gep_pat);
-          LoopMemPatNode* mem_acs_node = new LoopMemPatNode(MEM_ACS_NODE, mem_acs_pat);
-          loop_node->addChild(mem_acs_node);
+          auto val = dyn_cast<Value>(curII);
+          // auto use = dyn_cast<User>(val);
+          auto users = val->users();
+          
+          for(auto user: users) {
+            Instruction *next = dyn_cast<Instruction>(user);
+            int mode;
+            if (isa<LoadInst>(next)) {
+              mode = READ;
+            } else if (isa<StoreInst>(next)) {
+              mode = WRITE;
+            } else {
+              mode = 0;
+            }
+            dbg(mode);
+            MemAcsPat* mem_acs_pat = new MemAcsPat(gep_pat, mode);
+            LoopMemPatNode* mem_acs_node = new LoopMemPatNode(MEM_ACS_NODE, mem_acs_pat);
+            loop_node->addChild(mem_acs_node);
+          }
+          
+          
 
           // // old version for simple pattern A[i]
           // GEPOperator *gepop = dyn_cast<GEPOperator>(curII);

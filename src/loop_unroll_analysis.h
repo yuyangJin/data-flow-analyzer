@@ -12,12 +12,20 @@ private:
     int _i;
     int _j;
 public:
+    // ArrayPos(ArrayPos ap) {
+    //     _i = ap.getI();
+    //     _j = ap.getJ();
+    // }
+
     ArrayPos(int i, int j):
         _i(i), _j(j) {}
     
     void dump() {
-        std::cout << _i << " " << _j ;
+        std::cout << _i << "," << _j ;
     }
+
+    int getI() {return _i;}
+    int getJ() {return _j;}
 };
 
 // int convertToOffset(int i, int j, int nx, int ny) {
@@ -30,7 +38,7 @@ private:
 
     LoopMemPatNode* _loop; // must be a leaf loop node
 
-    std::unordered_map<std::string, std::unordered_map<std::string, ArrayPos>> _w_mem_acs; 
+    std::unordered_map<std::string, std::unordered_map<std::string, ArrayPos*>> _w_mem_acs; 
     
     std::map<std::string, int> _cur_ind_var_value_map;
 
@@ -78,7 +86,7 @@ public:
             offset += std::to_string(child_value);
             offset += "]";
         }
-        dbg(offset);
+        // dbg(offset);
         return offset;
     }
 
@@ -117,16 +125,51 @@ public:
                     if (child->getType() != MEM_ACS_NODE) {
                         continue;
                     }
+                    
 
                     auto mem_acs_pat = child->getMemAcsPat();
-                    auto mem_acs_pat_node = mem_acs_pat->getPatNode();
-                    std::string target_name = std::string(mem_acs_pat_node->getValueName());
-                    std::string offset = convertToOffset(mem_acs_pat_node);
-                    dbg(offset);
-                    // _w_mem_acs[]
-                    // recordWMemAcs(child);
+                    auto mode = mem_acs_pat->getAccessMode();
+                    if (mode == READ) {
+                        auto mem_acs_pat_node = mem_acs_pat->getPatNode();
+                        std::string object_name = std::string(mem_acs_pat_node->getValueName());
+                        std::string offset = convertToOffset(mem_acs_pat_node);
+                        // dbg(offset);
+                        // std::cout << "R:" << offset << " at " ;
 
+                        if (_w_mem_acs.find(object_name) != _w_mem_acs.end()) {
+                            auto& tmp_map = _w_mem_acs[object_name];
+
+                            if (tmp_map.find(offset) != tmp_map.end()) {
+                                std::cout << "[["<< i << "," << j << "],[";
+                                auto array_pos = tmp_map[offset];
+                                array_pos->dump();
+                                std::cout <<"]],"<< std::endl;
+                            }
+                        }
+                        // std::cout << std::endl;
+                    }
                 }
+
+                for (auto child: children) {
+                    if (child->getType() != MEM_ACS_NODE) {
+                        continue;
+                    }
+                    auto mem_acs_pat = child->getMemAcsPat();
+                    auto mode = mem_acs_pat->getAccessMode();
+                    if (mode == WRITE) {
+                        auto mem_acs_pat_node = mem_acs_pat->getPatNode();
+                        std::string object_name = std::string(mem_acs_pat_node->getValueName());
+                        std::string offset = convertToOffset(mem_acs_pat_node);
+                        // dbg(offset);
+                        // std::cout << "W:" << offset << " at " << i << "," << j << std::endl;
+                        
+                        ArrayPos* cur_array_pos = new ArrayPos(i,j);
+                        _w_mem_acs[object_name].insert(std::make_pair<std::string, ArrayPos*>(std::move(offset), std::move(cur_array_pos)));
+
+                    }
+                }
+
+
             }
         }
     }
